@@ -308,7 +308,7 @@ function App() {
   const healthAssessor = new HealthAssessor();
   const mealPlanGenerator = new MealPlanGenerator();
 
-  const handleFormSubmit = async (e) => {
+  const handleFormSubmit = (e) => {
     e.preventDefault();
 
     const formData = new FormData(e.target);
@@ -336,33 +336,11 @@ function App() {
       symptoms: symptoms
     };
 
-    try {
-      // Call the backend API
-      const response = await fetch('https://health-check-16f1.onrender.com/api/assess-health', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(profileData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to assess health');
-      }
-
-      const assessmentResult = await response.json();
-
-      setAssessment(assessmentResult);
-      setProfile(profileData);
-      setShowPopup(true);
-    } catch (error) {
-      console.error('Error assessing health:', error);
-      // Fallback to local assessment if API fails
-      const assessmentResult = healthAssessor.assessHealth(profileData);
-      setAssessment(assessmentResult);
-      setProfile(profileData);
-      setShowPopup(true);
-    }
+    // Use local health assessment
+    const assessmentResult = healthAssessor.assessHealth(profileData);
+    setAssessment(assessmentResult);
+    setProfile(profileData);
+    setShowPopup(true);
   };
 
   const handleViewMealPlan = () => {
