@@ -10,7 +10,7 @@ import os
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, origins=["http://localhost:3000", "http://localhost:5000", "https://health-check-ruby.vercel.app"])  # Enable CORS for specific origins
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -596,7 +596,7 @@ def serve_react_app(path):
     # Try to serve the file from the React build directory
     try:
         # Path to the React build directory
-        react_build_path = os.path.join(os.path.dirname(__file__), '..', 'client', 'nutricheck-vite', 'dist')
+        react_build_path = os.path.join(os.path.dirname(__file__), '..', 'client', 'dist')
 
         # If the path is empty or points to a file that exists, serve it
         if path == '' or path == '/':

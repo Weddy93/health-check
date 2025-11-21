@@ -338,7 +338,7 @@ function App() {
 
     try {
       // Call the backend API
-      const response = await fetch('/api/assess-health', {
+      const response = await fetch('https://health-check-16f1.onrender.com/api/assess-health', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
