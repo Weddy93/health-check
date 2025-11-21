@@ -365,58 +365,15 @@ function App() {
     }
   };
 
-  const handleViewMealPlan = async () => {
+  const handleViewMealPlan = () => {
     if (assessment) {
-      try {
-        // Call the backend API for meal plan generation
-        const response = await fetch('https://health-check-16f1.onrender.com/api/generate-meal-plan', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            healthStatus: assessment.healthStatus,
-            nutrients: assessment.nutrientsNeeded,
-            diagnosis: assessment.diagnosis,
-            bmi: assessment.bmi
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to generate meal plan');
-        }
-
-        const mealPlanData = await response.json();
-
-        // Transform backend response to frontend format
-        const plan = mealPlanData.meal_plan ? [
-          {
-            day: 'Day 1',
-            meals: {
-              breakfast: mealPlanData.meal_plan.breakfast || [],
-              lunch: mealPlanData.meal_plan.lunch || [],
-              dinner: mealPlanData.meal_plan.dinner || [],
-              snack: mealPlanData.meal_plan.snacks || []
-            },
-            recommendations: mealPlanData.recommendations || []
-          }
-        ] : mealPlanGenerator.generateMealPlan(assessment.nutrientsNeeded);
-
-        const list = mealPlanGenerator.generateShoppingList(plan);
-        setMealPlan(plan);
-        setShoppingList(list);
-        setCurrentPage('mealPlan');
-        setShowPopup(false);
-      } catch (error) {
-        console.error('Error generating meal plan:', error);
-        // Fallback to local generation if API fails
-        const plan = mealPlanGenerator.generateMealPlan(assessment.nutrientsNeeded);
-        const list = mealPlanGenerator.generateShoppingList(plan);
-        setMealPlan(plan);
-        setShoppingList(list);
-        setCurrentPage('mealPlan');
-        setShowPopup(false);
-      }
+      // Use local meal plan generation
+      const plan = mealPlanGenerator.generateMealPlan(assessment.nutrientsNeeded);
+      const list = mealPlanGenerator.generateShoppingList(plan);
+      setMealPlan(plan);
+      setShoppingList(list);
+      setCurrentPage('mealPlan');
+      setShowPopup(false);
     }
   };
 
