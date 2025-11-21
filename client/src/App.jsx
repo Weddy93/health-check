@@ -369,7 +369,7 @@ function App() {
     if (assessment) {
       try {
         // Call the backend API for meal plan generation
-        const response = await fetch('/api/generate-meal-plan', {
+        const response = await fetch('https://health-check-16f1.onrender.com/api/generate-meal-plan', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
