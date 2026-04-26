@@ -2,7 +2,7 @@
 
 A comprehensive web application for malnutrition detection and nutritional assessment using machine learning and modern web technologies.
 
-## 🚀 Features
+ Features
 
 - **Malnutrition Detection**: Advanced ML models for detecting malnutrition levels (Normal, Moderate, Severe)
 - **Health Assessment**: Comprehensive health evaluation based on BMI, age, gender, and other factors
@@ -11,7 +11,7 @@ A comprehensive web application for malnutrition detection and nutritional asses
 - **API Endpoints**: RESTful API for integration with other systems
 - **Batch Processing**: Support for processing multiple assessments simultaneously
 
-## 🏗️ Architecture
+ Architecture
 
 ### Backend (Flask)
 - **Framework**: Flask with CORS support
@@ -25,24 +25,24 @@ A comprehensive web application for malnutrition detection and nutritional asses
   - `/predict/batch` - Batch predictions
   - `/model/info` - Model information
 
-### Frontend (React + Vite)
+ Frontend (React + Vite)
 - **Framework**: React 19 with Vite
 - **Styling**: Tailwind CSS
 - **Features**: Responsive design, modern UI components
 
-### Machine Learning Models
+ Machine Learning Models
 - **Base Model**: Random Forest classifier for malnutrition detection
 - **Enhanced Model**: Advanced classifier with confidence scoring
 - **Preprocessing**: Feature scaling, z-score calculations, feature engineering
 - **Validation**: Input validation and error handling
 
-## 📋 Prerequisites
+ Prerequisites
 
 - Python 3.8+
 - Node.js 16+
 - Git
 
-## 🛠️ Installation
+ Installation
 
 ### Backend Setup
 
@@ -74,7 +74,7 @@ cd client/nutricheck-vite
 npm install
 ```
 
-## 🚀 Running the Application
+##  Running the Application
 
 ### Development Mode
 
@@ -102,7 +102,7 @@ npm run build
 
 2. The Flask app will automatically serve the built React app from the `/` route.
 
-## 📊 API Usage
+##  API Usage
 
 ### Health Assessment
 
@@ -152,7 +152,7 @@ curl -X POST http://localhost:5000/predict/batch \
   ]'
 ```
 
-## 🤖 Machine Learning Models
+##  Machine Learning Models
 
 The system uses trained machine learning models for malnutrition detection:
 
@@ -161,7 +161,7 @@ The system uses trained machine learning models for malnutrition detection:
 - **Model Types**: Random Forest, Enhanced Classifier with confidence scoring
 - **Preprocessing**: Feature scaling, z-score calculations, feature engineering
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 health-check/
@@ -184,7 +184,7 @@ health-check/
 └── README.md                    # This file
 ```
 
-## 🔧 Configuration
+##  Configuration
 
 ### Model Configuration
 
@@ -200,14 +200,14 @@ The application uses default configurations. For production deployment, consider
 - `FLASK_ENV=production`
 - Database connections (if extending to persistent storage)
 
-## 🧪 Testing
+##  Testing
 
 Run tests from the root directory:
 ```bash
 python -m pytest tests/
 ```
 
-## 📈 Model Training
+##  Model Training
 
 To retrain models:
 
@@ -228,7 +228,7 @@ python enhanced_classifier.py
 python evaluate_model.py
 ```
 
-## 🚀 Deployment
+##  Deployment
 
 ### Docker Deployment
 
@@ -250,24 +250,24 @@ The application can be deployed to:
 - Google App Engine
 - DigitalOcean App Platform
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make changes and add tests
 4. Submit a pull request
 
-## 📄 License
+##  License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 📞 Support
+##  Support
 
 For support and questions:
 - Create an issue on GitHub
 - Contact the development team
 
-## 🔄 Version History
+##  Version History
 
 - **v1.0.0**: Initial release with basic malnutrition detection
 - **v1.1.0**: Added enhanced classifier and confidence scoring
