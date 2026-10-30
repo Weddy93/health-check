@@ -1,1 +1,52 @@
 @import 'tailwindcss';
+
+@theme {
+  /* Deep healthcare green / teal brand palette */
+  --color-brand: #0f6b4c;
+  --color-brand-50: #f0fdf7;
+  --color-brand-100: #dcfcee;
+  --color-brand-200: #b7e4cd;
+  --color-brand-600: #15a073;
+  --color-brand-900: #0c4a3e;
+
+  --font-display: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Accessible focus indicator for every interactive element */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #0f6b4c, 0 0 0 4px white;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keep legacy App.css from interfering with the redesign */
+#root {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
