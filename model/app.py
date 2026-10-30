@@ -1,623 +1,447 @@
+"""
+NutriCheck backend (Flask).
+
+Single authoritative assessment workflow:
+  1. React validates the form
+  2. React POSTs assessment data to /api/assess-health
+  3. Flask validates the incoming data (ml_pipeline.validate_assessment_input)
+  4. Flask derives features consistently (ml_pipeline.build_feature_frame)
+  5. Flask loads the saved ML model + preprocessing objects (ml_pipeline)
+  6. Flask generates the prediction and returns structured JSON
+  7. React displays the returned result
+
+Frontend code never performs its own ML classification.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import pandas as pd
-import numpy as np
-import joblib
-import logging
-from datetime import datetime
-import traceback
-import os
 
-# Initialize Flask app
+from ml_pipeline import pipeline, FEATURES, CLASS_DISPLAY_LABELS
+
+# --------------------------------------------------------------------------- #
+# Application setup
+# --------------------------------------------------------------------------- #
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:3000", "http://localhost:5000", "https://health-check-ruby.vercel.app"])  # Enable CORS for specific origins
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Vite dev server runs on 5173; production is served by Flask itself.
+CORS(
+    app,
+    origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:5000",
+    ],
+    supports_credentials=False,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# Global model variables
-model = None
-scaler = None
-label_encoder = None
-enhanced_classifier = None
+# Load ML artifacts on startup. Failure is degraded gracefully: /api/health
+# reports model_loaded: false and /api/assess-health returns a 503.
+MODELS_READY = pipeline.load()
+if MODELS_READY:
+    logger.info("ML models ready")
+else:
+    logger.error("ML models failed to load: %s", pipeline.load_error)
 
-def load_models():
-    """Load all required models and preprocessing objects"""
-    global model, scaler, label_encoder, enhanced_classifier
 
-    try:
-        # Load base model and preprocessing
-        model = joblib.load('malnutrition_model.joblib')
-        scaler = joblib.load('feature_scaler.joblib')
-        label_encoder = joblib.load('label_encoder.joblib')
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+def error_response(error_code: str, message: str, status: int, details=None):
+    body = {"success": False, "error": error_code, "message": message}
+    if details is not None:
+        body["details"] = details
+    return jsonify(body), status
 
-        # Load enhanced classifier if available
-        if os.path.exists('enhanced_malnutrition_classifier.joblib'):
-            enhanced_classifier = joblib.load('enhanced_malnutrition_classifier.joblib')
-            logger.info("Enhanced classifier loaded successfully")
-        else:
-            logger.warning("Enhanced classifier not found, using base model only")
 
-        logger.info("All models loaded successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error loading models: {str(e)}")
-        return False
+def symptom_nutrient_insights(symptoms: list[str]) -> list[dict]:
+    """Map reported symptoms to general nutritional considerations.
 
-def calculate_zscore(measurement, age_months, gender, indicator):
-    """Calculate z-score based on WHO standards"""
-    if indicator == 'wfa':
-        expected_weight = (age_months * 0.3) + 3.5
-        sd = expected_weight * 0.1
-        return (measurement - expected_weight) / sd
-    elif indicator == 'hfa':
-        expected_height = (age_months * 0.5) + 50
-        sd = expected_height * 0.05
-        return (measurement - expected_height) / sd
-    elif indicator == 'bfa':
-        expected_bmi = 16 + (age_months * 0.05)
-        sd = 2
-        return (measurement - expected_bmi) / sd
-    elif indicator == 'mfa':
-        expected_muac = 14 + (age_months * 0.02)
-        sd = 1.5
-        return (measurement - expected_muac) / sd
-    return 0
+    These are educational pointers only - never diagnoses of medical
+    conditions derived from symptoms alone.
+    """
+    mapping = {
+        "fatigue": {"nutrient": "Iron", "foods": ["Spinach", "Lentils", "Red meat", "Fortified cereals"]},
+        "weakness": {"nutrient": "Protein", "foods": ["Eggs", "Chicken", "Fish", "Beans", "Greek yogurt"]},
+        "hairloss": {"nutrient": "Iron / Zinc", "foods": ["Beef", "Pumpkin seeds", "Chickpeas", "Spinach"]},
+        "skin": {"nutrient": "Vitamin A / Zinc", "foods": ["Carrots", "Sweet potatoes", "Kale", "Eggs"]},
+        "weight-loss": {"nutrient": "Protein / Calories", "foods": ["Nuts", "Avocado", "Whole grains", "Dried fruits"]},
+        "weight-gain": {"nutrient": "Balanced energy", "foods": ["Vegetables", "Fruits", "Lean protein", "Whole grains"]},
+        "bones": {"nutrient": "Calcium / Vitamin D", "foods": ["Dairy products", "Fortified plant milk", "Leafy greens"]},
+        "digestive": {"nutrient": "Fiber", "foods": ["Whole grains", "Vegetables", "Fruits", "Legumes"]},
+    }
+    insights = []
+    seen = set()
+    for symptom in symptoms:
+        if symptom in mapping and symptom not in seen:
+            seen.add(symptom)
+            insights.append(mapping[symptom])
+    return insights
 
-def engineer_features(df):
-    """Add enhanced features for better prediction"""
-    enhanced = df.copy()
 
-    # Calculate z-scores
-    enhanced['weight_for_age_z'] = enhanced.apply(
-        lambda x: calculate_zscore(x['weight_kg'], x['age_months'], x.get('gender', 'F'), 'wfa'), axis=1)
-    enhanced['height_for_age_z'] = enhanced.apply(
-        lambda x: calculate_zscore(x['height_cm'], x['age_months'], x.get('gender', 'F'), 'hfa'), axis=1)
-    enhanced['bmi_for_age_z'] = enhanced.apply(
-        lambda x: calculate_zscore(x['bmi'], x['age_months'], x.get('gender', 'F'), 'bfa'), axis=1)
-    enhanced['muac_for_age_z'] = enhanced.apply(
-        lambda x: calculate_zscore(x['muac_cm'], x['age_months'], x.get('gender', 'F'), 'mfa'), axis=1)
+def bmi_category_label(bmi: float) -> str:
+    if bmi < 18.5:
+        return "underweight"
+    if bmi < 25:
+        return "normal"
+    if bmi < 30:
+        return "overweight"
+    return "obese"
 
-    # Add clinical indicators
-    enhanced['stunting_score'] = enhanced['height_for_age_z'].apply(lambda x: 1 if x < -2 else 0)
-    enhanced['wasting_score'] = enhanced['weight_for_age_z'].apply(lambda x: 1 if x < -2 else 0)
-    enhanced['underweight_score'] = enhanced['bmi_for_age_z'].apply(lambda x: 1 if x < -2 else 0)
-    enhanced['weight_height_interaction'] = enhanced['weight_for_age_z'] * enhanced['height_for_age_z']
-    enhanced['bmi_muac_interaction'] = enhanced['bmi_for_age_z'] * enhanced['muac_for_age_z']
 
-    return enhanced
-
-def validate_input_data(data):
-    """Validate input data for prediction"""
-    required_fields = ['age_months', 'weight_kg', 'height_cm', 'muac_cm', 'bmi']
-    errors = []
-
-    for field in required_fields:
-        if field not in data:
-            errors.append(f"Missing required field: {field}")
-            continue
-
-        value = data[field]
-        if not isinstance(value, (int, float)) or value <= 0:
-            errors.append(f"Invalid value for {field}: must be positive number")
-
-        # Field-specific validation
-        if field == 'age_months' and (value < 1 or value > 240):
-            errors.append("Age must be between 1-240 months (0-20 years)")
-        elif field == 'weight_kg' and (value < 2 or value > 200):
-            errors.append("Weight must be between 2-200 kg")
-        elif field == 'height_cm' and (value < 30 or value > 250):
-            errors.append("Height must be between 30-250 cm")
-        elif field == 'muac_cm' and (value < 8 or value > 40):
-            errors.append("MUAC must be between 8-40 cm")
-        elif field == 'bmi' and (value < 8 or value > 60):
-            errors.append("BMI must be between 8-60")
-
-    return errors
-
-@app.route('/api/health', methods=['GET'])
+# --------------------------------------------------------------------------- #
+# API: health
+# --------------------------------------------------------------------------- #
+@app.route("/api/health", methods=["GET"])
 def health_check():
-    """Health check endpoint"""
     return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'model_loaded': model is not None,
-        'enhanced_classifier_loaded': enhanced_classifier is not None
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        **pipeline.health_status(),
     })
 
-@app.route('/api/assess-health', methods=['POST'])
+# --------------------------------------------------------------------------- #
+# API: assess-health  (single authoritative assessment endpoint)
+# --------------------------------------------------------------------------- #
+@app.route("/api/assess-health", methods=["POST"])
 def assess_health():
-    """Assess health based on user profile data"""
+    """Assess health using the saved ML model.
+
+    Request (JSON):
+        name, age (years), gender, weight (kg), height (cm), muac (cm),
+        activity, diet, life_stage, symptoms (list of strings)
+
+    Response (JSON, 200):
+        { success, prediction, nutritional_status, bmi, bmi_category,
+          symptoms, symptoms_reported, no_symptoms_reported,
+          recommendations, model_information, profile_summary, timestamp }
+
+    Error responses use { success: false, error, message, details? } with
+    appropriate HTTP status codes (400 / 503 / 500).
+    """
+    if not MODELS_READY:
+        return error_response(
+            "model_unavailable",
+            "The assessment model is not available on the server. Please try again later.",
+            503,
+        )
+
     try:
-        data = request.get_json()
-
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-
-        # Extract profile data
-        name = data.get('name', 'Unknown')
-        age_years = data.get('age', 25)
-        gender = data.get('gender', 'female')
-        weight_kg = data.get('weight', 60)
-        height_cm = data.get('height', 160)
-        activity = data.get('activity', 'moderate')
-        diet = data.get('diet', 'balanced')
-        life_stage = data.get('lifeStage', '')
-        symptoms = data.get('symptoms', [])
-
-        # Calculate BMI
-        height_m = height_cm / 100
-        bmi = weight_kg / (height_m ** 2)
-
-        # Convert age to months
-        age_months = age_years * 12
-
-        # Estimate MUAC based on BMI and age (rough approximation)
-        # Normal MUAC is typically 13.5-16.5 cm for adults
-        if bmi < 18.5:
-            muac_cm = 13.0  # Underweight
-        elif bmi < 25:
-            muac_cm = 14.5  # Normal
-        elif bmi < 30:
-            muac_cm = 15.5  # Overweight
-        else:
-            muac_cm = 16.0  # Obese
-
-        # Prepare data for malnutrition prediction
-        prediction_data = {
-            'age_months': age_months,
-            'weight_kg': weight_kg,
-            'height_cm': height_cm,
-            'muac_cm': muac_cm,
-            'bmi': bmi
-        }
-
-        # Validate input
-        validation_errors = validate_input_data(prediction_data)
-        if validation_errors:
-            # If validation fails, provide basic assessment
-            assessment = {
-                'health_status': 'unknown',
-                'bmi': round(bmi, 1),
-                'bmi_category': 'unknown',
-                'diagnosis': 'Unable to assess malnutrition status due to invalid data',
-                'nutrients_needed': [],
-                'recommendations': ['Please ensure all measurements are accurate']
-            }
-        else:
-            # Make malnutrition prediction
-            input_df = pd.DataFrame([prediction_data])
-            input_df['gender'] = gender[0].upper() if gender else 'F'
-
-            enhanced_data = engineer_features(input_df)
-            features = enhanced_data[['age_months', 'weight_kg', 'height_cm', 'muac_cm', 'bmi']]
-            features_scaled = scaler.transform(features)
-
-            if enhanced_classifier is not None:
-                prediction_encoded, confidence = enhanced_classifier.predict_with_confidence(
-                    pd.DataFrame(features_scaled, columns=features.columns)
-                )
-                confidence_score = float(confidence[0])
-            else:
-                prediction_encoded = model.predict(features_scaled)
-                confidence_score = None
-
-            prediction = label_encoder.inverse_transform(prediction_encoded)[0]
-
-            # Determine BMI category
-            if bmi < 18.5:
-                bmi_category = 'underweight'
-            elif bmi < 25:
-                bmi_category = 'normal'
-            elif bmi < 30:
-                bmi_category = 'overweight'
-            else:
-                bmi_category = 'obese'
-
-            # Create assessment response
-            is_malnourished = prediction in ['Moderate', 'Severe']
-
-            assessment = {
-                'health_status': 'malnourished' if is_malnourished else 'healthy',
-                'bmi': round(bmi, 1),
-                'bmi_category': bmi_category,
-                'diagnosis': f"{prediction} malnutrition detected" if is_malnourished else "Normal nutritional status",
-                'nutrients_needed': [] if not is_malnourished else ['Protein', 'Iron', 'Vitamin A', 'Vitamin D'],
-                'malnutrition_prediction': prediction,
-                'confidence_score': confidence_score
-            }
-
-        # Add life stage considerations
-        if life_stage:
-            assessment['life_stage'] = life_stage
-            if life_stage == 'pregnant':
-                assessment['nutrients_needed'].extend(['Folic Acid', 'Calcium', 'Iron'])
-            elif life_stage == 'lactating':
-                assessment['nutrients_needed'].extend(['Calcium', 'Vitamin D', 'Omega-3'])
-
-        # Add symptom-based recommendations
-        if symptoms:
-            symptom_nutrients = {
-                'fatigue': ['Iron', 'Vitamin B12'],
-                'weakness': ['Protein', 'Iron'],
-                'hairloss': ['Iron', 'Zinc', 'Vitamin D'],
-                'skin': ['Vitamin A', 'Zinc'],
-                'weight-loss': ['Protein', 'Calories'],
-                'weight-gain': ['Calories', 'Healthy Fats'],
-                'bones': ['Calcium', 'Vitamin D'],
-                'digestive': ['Fiber', 'Probiotics']
-            }
-
-            for symptom in symptoms:
-                if symptom in symptom_nutrients:
-                    assessment['nutrients_needed'].extend(symptom_nutrients[symptom])
-
-            # Remove duplicates
-            assessment['nutrients_needed'] = list(set(assessment['nutrients_needed']))
-
-        assessment['timestamp'] = datetime.now().isoformat()
-        assessment['profile_summary'] = {
-            'name': name,
-            'age': age_years,
-            'gender': gender,
-            'activity_level': activity,
-            'diet_type': diet
-        }
-
-        # Add food recommendations based on nutrients needed
-        if assessment['nutrients_needed']:
-            nutrient_foods = {
-                'Protein': ['eggs', 'chicken', 'fish', 'beans', 'nuts'],
-                'Iron': ['spinach', 'red meat', 'lentils', 'fortified cereals'],
-                'Calcium': ['dairy', 'leafy greens', 'fortified plant milks'],
-                'Vitamin A': ['carrots', 'sweet potatoes', 'leafy greens'],
-                'Vitamin D': ['fatty fish', 'fortified foods', 'sun exposure'],
-                'Zinc': ['meat', 'shellfish', 'legumes', 'nuts'],
-                'Folic Acid': ['leafy greens', 'citrus fruits', 'beans'],
-                'Omega-3': ['fatty fish', 'flaxseeds', 'walnuts'],
-                'Vitamin B12': ['meat', 'dairy', 'eggs', 'fortified cereals']
-            }
-            recommendations = []
-            for nutrient in assessment['nutrients_needed']:
-                if nutrient in nutrient_foods:
-                    recommendations.append({
-                        'nutrient': nutrient,
-                        'foods': nutrient_foods[nutrient]
-                    })
-            assessment['recommendations'] = recommendations
-
-        logger.info(f"Health assessment completed for {name}")
-        return jsonify(assessment)
-
-    except Exception as e:
-        logger.error(f"Assessment error: {str(e)}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'error': 'Assessment failed',
-            'message': str(e),
-            'health_status': 'unknown',
-            'bmi': 0,
-            'bmi_category': 'unknown',
-            'diagnosis': 'Assessment could not be completed',
-            'nutrients_needed': []
-        }), 500
-
-@app.route('/api/generate-meal-plan', methods=['POST'])
-def generate_meal_plan():
-    """Generate personalized meal plan based on assessment"""
-    try:
-        data = request.get_json()
-
-        if not data:
-            return jsonify({'error': 'No assessment data provided'}), 400
-
-        # Extract assessment data
-        health_status = data.get('healthStatus', 'healthy')
-        nutrients_needed = data.get('nutrients', [])
-        diagnosis = data.get('diagnosis', '')
-        bmi = data.get('bmi', 22)
-
-        # Generate meal plan based on needs
-        meal_plan = {
-            'breakfast': [],
-            'lunch': [],
-            'dinner': [],
-            'snacks': [],
-            'recommendations': []
-        }
-
-        # Basic meal plan structure
-        if health_status == 'healthy':
-            meal_plan['breakfast'] = ['Oatmeal with fruits', 'Whole grain toast with avocado', 'Greek yogurt with berries']
-            meal_plan['lunch'] = ['Grilled chicken salad', 'Quinoa bowl with vegetables', 'Turkey sandwich on whole grain bread']
-            meal_plan['dinner'] = ['Baked salmon with vegetables', 'Stir-fried tofu with brown rice', 'Lean beef with sweet potatoes']
-            meal_plan['snacks'] = ['Apple with almond butter', 'Carrot sticks with hummus', 'Handful of nuts']
-            meal_plan['recommendations'] = ['Continue balanced diet', 'Stay hydrated', 'Regular exercise']
-        else:
-            # Malnourished - focus on nutrient-dense foods
-            meal_plan['breakfast'] = ['Eggs with spinach and whole grain toast', 'Smoothie with protein powder and fruits', 'Avocado toast with eggs']
-            meal_plan['lunch'] = ['Lentil soup with vegetables', 'Chicken stir-fry with brown rice', 'Salmon salad with quinoa']
-            meal_plan['dinner'] = ['Beef stew with vegetables', 'Tuna with sweet potatoes', 'Chickpea curry with rice']
-            meal_plan['snacks'] = ['Greek yogurt with nuts', 'Protein bars', 'Fruit with cheese']
-            meal_plan['recommendations'] = ['Focus on protein-rich foods', 'Include healthy fats', 'Eat nutrient-dense foods']
-
-        # Add specific recommendations based on nutrients needed
-        nutrient_foods = {
-            'Protein': ['eggs', 'chicken', 'fish', 'beans', 'nuts'],
-            'Iron': ['spinach', 'red meat', 'lentils', 'fortified cereals'],
-            'Calcium': ['dairy', 'leafy greens', 'fortified plant milks'],
-            'Vitamin A': ['carrots', 'sweet potatoes', 'leafy greens'],
-            'Vitamin D': ['fatty fish', 'fortified foods', 'sun exposure'],
-            'Zinc': ['meat', 'shellfish', 'legumes', 'nuts'],
-            'Folic Acid': ['leafy greens', 'citrus fruits', 'beans'],
-            'Omega-3': ['fatty fish', 'flaxseeds', 'walnuts']
-        }
-
-        for nutrient in nutrients_needed:
-            if nutrient in nutrient_foods:
-                meal_plan['recommendations'].append(f"Include more {nutrient.lower()}-rich foods: {', '.join(nutrient_foods[nutrient])}")
-
-        meal_plan['timestamp'] = datetime.now().isoformat()
-        meal_plan['based_on'] = {
-            'health_status': health_status,
-            'nutrients_needed': nutrients_needed,
-            'bmi': bmi
-        }
-
-        logger.info("Meal plan generated successfully")
-        return jsonify(meal_plan)
-
-    except Exception as e:
-        logger.error(f"Meal plan generation error: {str(e)}")
-        return jsonify({
-            'error': 'Meal plan generation failed',
-            'message': str(e),
-            'meal_plan': {
-                'breakfast': ['Consult a nutritionist for personalized meal plan'],
-                'lunch': ['Consult a nutritionist for personalized meal plan'],
-                'dinner': ['Consult a nutritionist for personalized meal plan'],
-                'snacks': ['Consult a nutritionist for personalized meal plan'],
-                'recommendations': ['Please consult a healthcare professional for personalized nutrition advice']
-            }
-        }), 500
-
-@app.route('/predict', methods=['POST'])
-def predict_malnutrition():
-    """Predict malnutrition status for a single individual"""
-    try:
-        # Get JSON data
-        data = request.get_json()
-
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-
-        # Validate input
-        validation_errors = validate_input_data(data)
-        if validation_errors:
-            return jsonify({
-                'error': 'Validation failed',
-                'details': validation_errors
-            }), 400
-
-        # Prepare input data
-        input_df = pd.DataFrame([data])
-
-        # Add gender if not provided
-        if 'gender' not in input_df.columns:
-            input_df['gender'] = 'F'
-
-        # Engineer features
-        enhanced_data = engineer_features(input_df)
-
-        # Prepare features for model - use only the basic features that the model was trained on
-        basic_features = ['age_months', 'weight_kg', 'height_cm', 'muac_cm', 'bmi']
-        features = enhanced_data[basic_features]
-
-        # Scale features
-        features_scaled = scaler.transform(features)
-
-        # Make prediction
-        if enhanced_classifier is not None:
-            # Use enhanced classifier with confidence
-            prediction_encoded, confidence = enhanced_classifier.predict_with_confidence(
-                pd.DataFrame(features_scaled, columns=features.columns)
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
+            return error_response(
+                "invalid_input",
+                "No assessment data provided. Send a JSON object with the assessment fields.",
+                400,
             )
-            confidence_score = float(confidence[0])
-        else:
-            # Fallback to base model
-            prediction_encoded = model.predict(features_scaled)
-            confidence_score = None
 
-        # Decode prediction
-        prediction = label_encoder.inverse_transform(prediction_encoded)[0]
-
-        # Prepare response
-        response = {
-            'prediction': prediction,
-            'timestamp': datetime.now().isoformat(),
-            'input_data': data,
-            'confidence_score': confidence_score,
-            'model_version': 'enhanced' if enhanced_classifier else 'base'
+        # Normalize frontend field names to the pipeline contract.
+        normalized = {
+            "age": data.get("age"),
+            "weight_kg": data.get("weight"),
+            "height_cm": data.get("height"),
+            "muac_cm": data.get("muac"),
+            "gender": data.get("gender"),
+            "symptoms": data.get("symptoms", []),
+            "name": data.get("name", ""),
+            "activity": data.get("activity", ""),
+            "diet": data.get("diet", ""),
+            "life_stage": data.get("life_stage", ""),
         }
 
-        # Add interpretation
-        if prediction == 'Normal':
-            response['interpretation'] = 'Normal nutritional status'
-            response['recommendation'] = 'Continue with balanced diet and regular health check-ups'
-        elif prediction == 'Moderate':
-            response['interpretation'] = 'Moderate malnutrition detected'
-            response['recommendation'] = 'Consult healthcare provider for nutritional intervention'
-        elif prediction == 'Severe':
-            response['interpretation'] = 'Severe malnutrition detected'
-            response['recommendation'] = 'Immediate medical attention required'
+        validation_errors = pipeline.validate_assessment_input(normalized)
+        if validation_errors:
+            return error_response(
+                "validation_error",
+                "Assessment data failed validation. Please correct the fields below.",
+                400,
+                details=[{"field": e.field, "message": e.message} for e in validation_errors],
+            )
 
-        logger.info(f"Prediction made: {prediction} (confidence: {confidence_score})")
-        return jsonify(response)
+        # Single authoritative prediction path.
+        result = pipeline.predict(normalized)
 
-    except Exception as e:
-        logger.error(f"Prediction error: {str(e)}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            'error': 'Internal server error',
-            'message': str(e)
-        }), 500
+        symptoms = normalized["symptoms"]
+        no_symptoms = any(s in {"no-symptoms", "none", "no symptoms"} for s in symptoms)
+        actual_symptoms = [s for s in symptoms if s not in {"no-symptoms", "none", "no symptoms"}]
 
-@app.route('/predict/batch', methods=['POST'])
-def predict_batch():
-    """Predict malnutrition status for multiple individuals"""
+        recommendations = []
+        if result.nutritional_status_key in {"moderate", "severe"}:
+            recommendations.append(
+                "Share this result with a healthcare professional for further assessment."
+            )
+        if actual_symptoms:
+            recommendations.append(
+                "Discuss your reported symptoms with a qualified clinician."
+            )
+        if result.bmi_category in {"underweight", "overweight", "obese"}:
+            recommendations.append(
+                f"Your BMI category ({result.bmi_category}) warrants a conversation with a nutritionist."
+            )
+        if not recommendations:
+            recommendations.append(
+                "Continue with a balanced diet and regular health check-ups."
+            )
+
+        response = {
+            "success": True,
+            "prediction": {
+                "nutritional_status": result.nutritional_status,
+                "nutritional_status_key": result.nutritional_status_key,
+                "model_type": result.model_type,
+                "features_used": result.features_used,
+                "classes": result.classes,
+            },
+            "nutritional_status": result.nutritional_status,
+            "bmi": result.bmi,
+            "bmi_category": result.bmi_category,
+            "symptoms": actual_symptoms,
+            "symptoms_reported": bool(actual_symptoms),
+            "no_symptoms_reported": bool(no_symptoms),
+            "recommendations": recommendations,
+            "symptom_insights": symptom_nutrient_insights(actual_symptoms),
+            "model_information": {
+                "model_type": result.model_type,
+                "features": result.features_used,
+                "classes": result.classes,
+                "note": "Preliminary ML-based nutritional screening - not a medical diagnosis.",
+            },
+            "profile_summary": {
+                "name": normalized["name"] or "Not provided",
+                "age": normalized["age"],
+                "gender": normalized["gender"],
+                "activity_level": normalized["activity"],
+                "diet_type": normalized["diet"],
+                "life_stage": normalized["life_stage"],
+            },
+            "timestamp": datetime.now().isoformat(),
+        }
+        logger.info(
+            "Assessment completed for %s: %s (BMI %s)", normalized["name"], result.nutritional_status, result.bmi
+        )
+        return jsonify(response), 200
+
+    except error_response as err:
+        return err
+    except Exception as exc:
+        logger.exception("Assessment error: %s", exc)
+        return error_response(
+            "prediction_error",
+            "The assessment could not be completed. Please try again or contact support.",
+            500,
+        )
+
+# --------------------------------------------------------------------------- #
+# API: generate-meal-plan
+# --------------------------------------------------------------------------- #
+MEAL_TEMPLATES = {
+    "balanced": {
+        "breakfast": ["Whole grain cereal with milk", "Fresh fruit", "Boiled egg"],
+        "lunch": ["Vegetable soup", "Sandwich with lean protein", "Side salad"],
+        "dinner": ["Baked fish", "Steamed vegetables", "Brown rice"],
+        "snacks": ["Yogurt", "Fresh fruit"],
+    },
+    "high_protein": {
+        "breakfast": ["Scrambled eggs with spinach", "Whole grain toast", "Greek yogurt"],
+        "lunch": ["Grilled chicken salad", "Quinoa", "Mixed vegetables"],
+        "dinner": ["Baked salmon", "Steamed broccoli", "Sweet potato"],
+        "snacks": ["Handful of almonds", "Protein shake"],
+    },
+    "iron_rich": {
+        "breakfast": ["Fortified cereal with berries", "Orange juice", "Hard-boiled eggs"],
+        "lunch": ["Spinach and lentil soup", "Whole grain bread", "Lean red meat"],
+        "dinner": ["Beef stir-fry with bell peppers", "Brown rice", "Steamed kale"],
+        "snacks": ["Dried apricots", "Pumpkin seeds"],
+    },
+    "energy_boost": {
+        "breakfast": ["Oatmeal with bananas", "Walnuts", "Milk"],
+        "lunch": ["Chicken and avocado wrap", "Fruit salad", "Yogurt"],
+        "dinner": ["Turkey meatballs", "Whole wheat pasta", "Green beans"],
+        "snacks": ["Apple with peanut butter", "Trail mix"],
+    },
+}
+
+NUTRIENT_FOODS = {
+    "Protein": ["Eggs", "Chicken", "Fish", "Beans", "Nuts"],
+    "Iron": ["Spinach", "Red meat", "Lentils", "Fortified cereals"],
+    "Calcium": ["Dairy", "Leafy greens", "Fortified plant milks"],
+    "Vitamin A": ["Carrots", "Sweet potatoes", "Leafy greens"],
+    "Vitamin D": ["Fatty fish", "Fortified foods"],
+    "Zinc": ["Meat", "Shellfish", "Legumes", "Nuts"],
+    "Folic Acid": ["Leafy greens", "Citrus fruits", "Beans"],
+    "Omega-3": ["Fatty fish", "Flaxseeds", "Walnuts"],
+    "Vitamin B12": ["Meat", "Dairy", "Eggs", "Fortified cereals"],
+    "Fiber": ["Whole grains", "Vegetables", "Fruits", "Legumes"],
+}
+
+
+def _meal_plan_for(status_key: str) -> str:
+    if status_key == "severe":
+        return "high_protein"
+    if status_key == "moderate":
+        return "iron_rich"
+    if status_key == "normal":
+        return "balanced"
+    return "energy_boost"
+
+
+@app.route("/api/generate-meal-plan", methods=["POST"])
+def generate_meal_plan():
+    """Generate meal suggestions aligned with the assessment outcome.
+
+    Educational guidance only - not a substitute for a dietitian's plan.
+    """
     try:
-        # Get JSON data
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data or not isinstance(data, dict):
+            return error_response(
+                "invalid_input",
+                "No assessment data provided for meal planning.",
+                400,
+            )
 
-        if not data or not isinstance(data, list):
-            return jsonify({'error': 'Expected list of individual data'}), 400
+        status_key = str(data.get("nutritional_status_key", "normal")).lower()
+        bmi = float(data.get("bmi", 22) or 22)
+        symptoms = data.get("symptoms", []) or []
+        diet = str(data.get("diet_type", "")).lower()
 
-        if len(data) > 100:
-            return jsonify({'error': 'Batch size limited to 100 predictions'}), 400
+        template_key = _meal_plan_for(status_key)
+        plan = MEAL_TEMPLATES[template_key]
 
-        results = []
+        considerations = [
+            "Eat regular, balanced meals throughout the day.",
+            "Include a source of protein at each main meal.",
+            "Choose whole grains, vegetables and fruit daily.",
+            "Drink plenty of water - aim for about 6-8 glasses per day unless advised otherwise by a clinician.",
+        ]
+        if status_key in {"moderate", "severe"}:
+            considerations.insert(
+                0,
+                "You have been flagged for possible nutritional risk - consult a healthcare professional before making major dietary changes.",
+            )
 
-        for i, individual_data in enumerate(data):
-            try:
-                # Validate individual input
-                validation_errors = validate_input_data(individual_data)
-                if validation_errors:
-                    results.append({
-                        'index': i,
-                        'error': 'Validation failed',
-                        'details': validation_errors
-                    })
-                    continue
-
-                # Prepare input data
-                input_df = pd.DataFrame([individual_data])
-
-                # Add gender if not provided
-                if 'gender' not in input_df.columns:
-                    input_df['gender'] = 'F'
-
-                # Engineer features
-                enhanced_data = engineer_features(input_df)
-
-                # Prepare features for model
-                features = enhanced_data.drop(['gender'], axis=1, errors='ignore')
-
-                # Scale features
-                features_scaled = scaler.transform(features)
-
-                # Make prediction
-                if enhanced_classifier is not None:
-                    prediction_encoded, confidence = enhanced_classifier.predict_with_confidence(
-                        pd.DataFrame(features_scaled, columns=features.columns)
-                    )
-                    confidence_score = float(confidence[0])
-                else:
-                    prediction_encoded = model.predict(features_scaled)
-                    confidence_score = None
-
-                # Decode prediction
-                prediction = label_encoder.inverse_transform(prediction_encoded)[0]
-
-                results.append({
-                    'index': i,
-                    'prediction': prediction,
-                    'confidence_score': confidence_score,
-                    'input_data': individual_data
-                })
-
-            except Exception as e:
-                results.append({
-                    'index': i,
-                    'error': f'Prediction failed: {str(e)}'
-                })
+        nutrient_recs = []
+        seen_nutrients = set()
+        for symptom in symptoms:
+            for nutrient, foods in NUTRIENT_FOODS.items():
+                if nutrient.lower() in symptom or symptom in nutrient.lower():
+                    if nutrient not in seen_nutrients:
+                        seen_nutrients.add(nutrient)
+                        nutrient_recs.append({"nutrient": nutrient, "foods": foods})
 
         return jsonify({
-            'total_predictions': len(data),
-            'successful_predictions': len([r for r in results if 'prediction' in r]),
-            'results': results,
-            'timestamp': datetime.now().isoformat()
-        })
+            "success": True,
+            "template": template_key,
+            "based_on": {
+                "nutritional_status": status_key,
+                "bmi": bmi,
+                "diet_type": diet,
+            },
+            "breakfast": plan["breakfast"],
+            "lunch": plan["lunch"],
+            "dinner": plan["dinner"],
+            "snacks": plan["snacks"],
+            "considerations": considerations,
+            "nutrient_suggestions": nutrient_recs,
+            "disclaimer": (
+                "These meal suggestions are general educational guidance. "
+                "They are not a medical prescription and do not claim to treat or cure any condition."
+            ),
+            "timestamp": datetime.now().isoformat(),
+        }), 200
+    except Exception as exc:
+        logger.exception("Meal plan error: %s", exc)
+        return error_response(
+            "server_error",
+            "Meal plan could not be generated.",
+            500,
+        )
 
-    except Exception as e:
-        logger.error(f"Batch prediction error: {str(e)}")
-        return jsonify({
-            'error': 'Internal server error',
-            'message': str(e)
-        }), 500
 
-@app.route('/model/info', methods=['GET'])
+# --------------------------------------------------------------------------- #
+# API: model/info
+# --------------------------------------------------------------------------- #
+@app.route("/model/info", methods=["GET"])
 def model_info():
-    """Get information about the loaded model"""
-    if model is None:
-        return jsonify({'error': 'Model not loaded'}), 500
-
+    if not MODELS_READY:
+        return jsonify({"error": "Model not loaded", "message": pipeline.load_error}), 503
     try:
-        # Get feature importance
-        feature_importance = {}
-        for feature, importance in zip(scaler.feature_names_in_, model.feature_importances_):
-            feature_importance[feature] = float(importance)
-
-        # Sort by importance
-        sorted_features = sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)
-
+        status = pipeline.health_status()
         return jsonify({
-            'model_type': type(model).__name__,
-            'classes': label_encoder.classes_.tolist(),
-            'feature_importance': dict(sorted_features),
-            'enhanced_classifier_available': enhanced_classifier is not None,
-            'n_features': len(scaler.feature_names_in_),
-            'last_updated': datetime.now().isoformat()
-        })
+            "model_type": status["model_type"],
+            "classes": status["classes"],
+            "n_features": status["n_features"],
+            "features": status["features"],
+            "enhanced_classifier_available": status["enhanced_classifier_available"],
+            "note": "Confidence scores are not presented - the saved model's heuristic confidence is not statistically calibrated.",
+        }), 200
+    except Exception as exc:
+        logger.error("Model info error: %s", exc)
+        return jsonify({"error": "Could not retrieve model information"}), 500
 
-    except Exception as e:
-        logger.error(f"Model info error: {str(e)}")
-        return jsonify({
-            'error': 'Could not retrieve model information',
-            'message': str(e)
-        }), 500
 
+# --------------------------------------------------------------------------- #
+# Error handlers
+# --------------------------------------------------------------------------- #
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Endpoint not found'}), 404
+    if request.path.startswith("/api/"):
+        return jsonify({"success": False, "error": "not_found", "message": "Endpoint not found"}), 404
+    return not_found_page(error)
+
+
+def not_found_page(error):
+    return jsonify({"success": False, "error": "not_found", "message": "Resource not found"}), 404
+
 
 @app.errorhandler(500)
 def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "success": False,
+            "error": "internal_server_error",
+            "message": "An unexpected server error occurred.",
+        }), 500
+    return jsonify({"success": False, "error": "internal_server_error", "message": "An unexpected server error occurred."}), 500
 
-# Serve React App
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
+
+# --------------------------------------------------------------------------- #
+# Serve React app (production build)
+# --------------------------------------------------------------------------- #
+REACT_BUILD_PATH = os.path.join(os.path.dirname(__file__), "..", "client", "dist")
+
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
 def serve_react_app(path):
-    """Serve React app for all non-API routes"""
-    if path.startswith('api/'):
-        return not_found(404)
+    """Serve the built React app for all non-API routes (SPA fallback)."""
+    if path.startswith("api/"):
+        return jsonify({"success": False, "error": "not_found", "message": "API endpoint not found"}), 404
 
-    # Try to serve the file from the React build directory
     try:
-        # Path to the React build directory
-        react_build_path = os.path.join(os.path.dirname(__file__), '..', 'client', 'dist')
+        if path == "" or path == "/":
+            return send_from_directory(REACT_BUILD_PATH, "index.html")
+        full_path = os.path.join(REACT_BUILD_PATH, path)
+        if os.path.exists(full_path) and os.path.isfile(full_path):
+            return send_from_directory(REACT_BUILD_PATH, path)
+        return send_from_directory(REACT_BUILD_PATH, "index.html")
+    except Exception as exc:
+        logger.error("Error serving React app: %s", exc)
+        return jsonify({"error": "Frontend not available. Build the client first."}), 500
 
-        # If the path is empty or points to a file that exists, serve it
-        if path == '' or path == '/':
-            return send_from_directory(react_build_path, 'index.html')
-        else:
-            # Check if the file exists
-            full_path = os.path.join(react_build_path, path)
-            if os.path.exists(full_path) and os.path.isfile(full_path):
-                return send_from_directory(react_build_path, path)
-            else:
-                # For SPA routing, serve index.html for any non-API route
-                return send_from_directory(react_build_path, 'index.html')
-    except Exception as e:
-        logger.error(f"Error serving React app: {str(e)}")
-        return jsonify({'error': 'Frontend not available'}), 500
 
-if __name__ == '__main__':
-    # Load models on startup
-    if load_models():
-        logger.info("Starting Flask server with integrated React frontend...")
-        app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    if MODELS_READY:
+        logger.info("Starting Flask server on http://0.0.0.0:5000")
+        app.run(host="0.0.0.0", port=5000, debug=True)
     else:
         logger.error("Failed to load models. Exiting.")
         exit(1)
