@@ -12,6 +12,7 @@ A comprehensive web application for malnutrition detection and nutritional asses
 - **Batch Processing**: Support for processing multiple assessments simultaneously
 
  Architecture
+ 
  live at: https://health-check-ruby.vercel.app/
 
 ### Backend (Flask)
