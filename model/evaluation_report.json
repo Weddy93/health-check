@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-10-30T17:58:02.630783",
+  "artifact_checks": {
+    "model": {
+      "loaded": true,
+      "type": "RandomForestClassifier"
+    },
+    "scaler": {
+      "loaded": true,
+      "type": "StandardScaler"
+    },
+    "label_encoder": {
+      "loaded": true,
+      "type": "LabelEncoder"
+    },
+    "enhanced": {
+      "loaded": true,
+      "type": "EnhancedConfidentMalnutritionClassifier",
+      "wraps": "RandomForestClassifier"
+    },
+    "contract": {
+      "scaler_features": [
+        "age_months",
+        "weight_kg",
+        "height_cm",
+        "muac_cm",
+        "bmi"
+      ],
+      "scaler_features_match": true,
+      "model_n_features": 5,
+      "model_n_features_match": true,
+      "encoder_classes": [
+        "moderate",
+        "normal",
+        "severe"
+      ],
+      "encoder_fitted": true,
+      "model_classes": [
+        0,
+        1,
+        2
+      ]
+    }
+  },
+  "structural_checks": {
+    "deterministic": true,
+    "sample_predictions": [
+      {
+        "input": "child underweight",
+        "features": [
+          36.0,
+          10.0,
+          85.0,
+          13.0,
+          13.8
+        ],
+        "prediction_key": "normal",
+        "max_class_probability": 1.0
+      },
+      {
+        "input": "adult normal",
+        "features": [
+          300.0,
+          70.0,
+          175.0,
+          27.0,
+          22.9
+        ],
+        "prediction_key": "normal",
+        "max_class_probability": 1.0
+      },
+      {
+        "input": "adult obese",
+        "features": [
+          360.0,
+          105.0,
+          170.0,
+          34.0,
+          36.3
+        ],
+        "prediction_key": "normal",
+        "max_class_probability": 1.0
+      }
+    ],
+    "feature_order_used": [
+      "age_months",
+      "weight_kg",
+      "height_cm",
+      "muac_cm",
+      "bmi"
+    ]
+  },
+  "dataset": {
+    "path": null,
+    "found": false
+  },
+  "evaluation": {
+    "skipped": true,
+    "reason": "preprocessed_malnutrition_data.csv is not present in the repository",
+    "required": "A labeled CSV with columns age_months, weight_kg, height_cm, muac_cm, bmi and a nutrition_status target column whose values match the label encoder classes (moderate / normal / severe)."
+  },
+  "conclusion": "Model artifacts load correctly and the production prediction path is structurally valid (aligned features, deterministic predictions, correct label decoding). Genuine accuracy/precision/recall/F1 scores cannot be reported because the labeled dataset preprocessed_malnutrition_data.csv is missing from the repository. No metrics have been invented. Add the dataset and re-run this script to obtain genuine stratified evaluation results."
+}
