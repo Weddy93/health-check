@@ -19,6 +19,19 @@ const STEPS = [
   { id: 'symptoms', title: 'Symptoms' },
 ];
 
+const STEP_FIELDS = {
+  0: ['age', 'gender'],
+  1: ['weight', 'height', 'muac'],
+  2: ['activity', 'diet'],
+  3: [],
+};
+
+const fieldStep = (field) => {
+  if (['age', 'gender'].includes(field)) return 0;
+  if (['weight', 'height', 'muac'].includes(field)) return 1;
+  if (['activity', 'diet'].includes(field)) return 2;
+  return 0;
+};
 const LIFE_STAGE_OPTIONS = [
   { value: 'none', label: 'None' },
   { value: 'pregnant', label: 'Pregnant' },
@@ -77,8 +90,11 @@ export default function AssessmentForm({ onAssessmentComplete }) {
     setForm((prev) => {
       const current = prev.symptoms || [];
       if (value === 'no-symptoms') {
-        // "No symptoms" excludes every actual symptom.
-        return { ...prev, symptoms: current.includes(value) ? current : [value] };
+        // "No symptoms" excludes every actual symptom; toggles off if already selected.
+        if (current.includes(value)) {
+          return { ...prev, symptoms: [] };
+        }
+        return { ...prev, symptoms: [value] };
       }
       if (current.includes('no-symptoms')) {
         // Picking an actual symptom removes "No symptoms".
@@ -102,9 +118,23 @@ export default function AssessmentForm({ onAssessmentComplete }) {
       height: form.height,
       muac: form.muac,
     });
-    Object.assign(next, all);
+    const allowed = new Set(STEP_FIELDS[stepIndex] || []);
+    Object.keys(all).forEach((key) => {
+      if (allowed.has(key)) next[key] = all[key];
+    });
     if (stepIndex === 0 && !form.gender) next.gender = 'Please select a gender';
     return next;
+  };
+
+  const allErrors = () => {
+    const { errors: all } = validateAssessment({
+      age: form.age,
+      gender: form.gender,
+      weight: form.weight,
+      height: form.height,
+      muac: form.muac,
+    });
+    return all;
   };
 
   const fieldError = (key) => {
@@ -115,7 +145,7 @@ export default function AssessmentForm({ onAssessmentComplete }) {
   const setTouched = () => {
     setTouch(
       Object.fromEntries(
-        ['age', 'gender', 'weight', 'height', 'muac'].map((k) => [k, true])
+        ['age', 'gender', 'weight', 'height', 'muac', 'activity', 'diet'].map((k) => [k, true])
       )
     );
   };
@@ -133,10 +163,14 @@ export default function AssessmentForm({ onAssessmentComplete }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError(null);
-    const current = stepErrors();
+    const current = allErrors();
     setTouched();
     setErrors(current);
-    if (Object.keys(current).length > 0) return;
+    if (Object.keys(current).length > 0) {
+      const firstField = Object.keys(current)[0];
+      setStepIndex(fieldStep(firstField));
+      return;
+    }
 
     const weight = Number(form.weight);
     const height = Number(form.height);
@@ -369,7 +403,10 @@ export default function AssessmentForm({ onAssessmentComplete }) {
         </section>
 
         {/* Step 4: Symptoms */}
-        <section id="step-symptoms" className="animate-fade-in space-y-6">
+        <section
+          id="step-symptoms"
+          className={`${step === 3 ? 'block' : 'hidden'} animate-fade-in space-y-6`}
+        >
           <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 mb-4">
             <p className="text-sm text-slate-600">
               Select any symptoms you currently experience. If you feel healthy, choose
