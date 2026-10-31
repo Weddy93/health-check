@@ -20,16 +20,17 @@ const STEPS = [
 ];
 
 const STEP_FIELDS = {
-  0: ['age', 'gender'],
+  0: ['name', 'age', 'gender'],
   1: ['weight', 'height', 'muac'],
   2: ['activity', 'diet'],
-  3: [],
+  3: ['symptoms'],
 };
 
 const fieldStep = (field) => {
-  if (['age', 'gender'].includes(field)) return 0;
+  if (['name', 'age', 'gender'].includes(field)) return 0;
   if (['weight', 'height', 'muac'].includes(field)) return 1;
   if (['activity', 'diet'].includes(field)) return 2;
+  if (field === 'symptoms') return 3;
   return 0;
 };
 const LIFE_STAGE_OPTIONS = [
@@ -76,9 +77,19 @@ export default function AssessmentForm({ onAssessmentComplete }) {
 
   const currentStep = STEPS[stepIndex];
   const isLastStep = stepIndex === STEPS.length - 1;
+  const lifeStageOptions = form.gender === 'male'
+    ? LIFE_STAGE_OPTIONS.filter((o) => o.value === 'none')
+    : LIFE_STAGE_OPTIONS;
 
   const setField = useCallback((key, value) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'gender' && value === 'male' &&
+          (prev.life_stage === 'pregnant' || prev.life_stage === 'lactating')) {
+        next.life_stage = 'none';
+      }
+      return next;
+    });
     // Clear field error once the user starts correcting it.
     if (errors[key]) {
       setErrors((prev) => { const next = { ...prev }; delete next[key]; return next; });
@@ -112,6 +123,7 @@ export default function AssessmentForm({ onAssessmentComplete }) {
   const stepErrors = () => {
     const next = {};
     const { errors: all } = validateAssessment({
+      name: form.name,
       age: form.age,
       gender: form.gender,
       weight: form.weight,
@@ -123,18 +135,26 @@ export default function AssessmentForm({ onAssessmentComplete }) {
       if (allowed.has(key)) next[key] = all[key];
     });
     if (stepIndex === 0 && !form.gender) next.gender = 'Please select a gender';
+    if (stepIndex === 3 && (form.symptoms || []).length === 0) {
+      next.symptoms = 'Please select at least one symptom or "No symptoms"';
+    }
     return next;
   };
 
   const allErrors = () => {
     const { errors: all } = validateAssessment({
+      name: form.name,
       age: form.age,
       gender: form.gender,
       weight: form.weight,
       height: form.height,
       muac: form.muac,
     });
-    return all;
+    const next = { ...all };
+    if ((form.symptoms || []).length === 0) {
+      next.symptoms = 'Please select at least one symptom or "No symptoms"';
+    }
+    return next;
   };
 
   const fieldError = (key) => {
@@ -145,7 +165,7 @@ export default function AssessmentForm({ onAssessmentComplete }) {
   const setTouched = () => {
     setTouch(
       Object.fromEntries(
-        ['age', 'gender', 'weight', 'height', 'muac', 'activity', 'diet'].map((k) => [k, true])
+        ['name', 'age', 'gender', 'weight', 'height', 'muac', 'activity', 'diet', 'symptoms'].map((k) => [k, true])
       )
     );
   };
@@ -286,11 +306,10 @@ export default function AssessmentForm({ onAssessmentComplete }) {
           <div className="grid md:grid-cols-2 gap-6">
             {renderField({
               id: 'name',
-              label: 'Full name (optional)',
+              label: 'Full name',
               type: 'text',
               value: form.name,
               placeholder: 'e.g. Maria',
-              required: false,
             })}
             {renderSelect({
               id: 'gender',
@@ -303,12 +322,22 @@ export default function AssessmentForm({ onAssessmentComplete }) {
               value: form.gender,
             })}
           </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            {renderField({
+              id: 'age',
+              label: 'Age',
+              type: 'number',
+              value: form.age,
+              placeholder: 'e.g. 25',
+              unit: 'years',
+            })}
+          </div>
           <div className="space-y-2">
             <label className="block text-sm font-semibold text-slate-700">
               Life stage <span className="text-slate-400 text-xs font-normal ml-2">(optional)</span>
             </label>
             <div className="grid md:grid-cols-3 gap-3">
-              {LIFE_STAGE_OPTIONS.map((opt) => (
+              {lifeStageOptions.map((opt) => (
                 <label
                   key={opt.value}
                   className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer text-sm ${
@@ -377,6 +406,23 @@ export default function AssessmentForm({ onAssessmentComplete }) {
               Client-side estimate only — the server performs the authoritative calculation.
             </div>
           </div>
+          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 text-sm text-slate-600 space-y-2">
+            <p className="font-semibold text-slate-800">What is BMI?</p>
+            <p>
+              Body Mass Index (BMI) is a screening measure that relates your weight to your
+              height (kg/m²). It is an estimate, not a diagnosis.
+            </p>
+            <ul className="list-disc pl-5 space-y-1">
+              <li><strong>Underweight:</strong> BMI below 18.5</li>
+              <li><strong>Normal:</strong> BMI 18.5 – 24.9</li>
+              <li><strong>Overweight:</strong> BMI 25 – 29.9</li>
+              <li><strong>Obese:</strong> BMI 30 or above</li>
+            </ul>
+            <p className="text-xs text-slate-500">
+              BMI does not distinguish muscle from fat and varies by age, sex and ethnicity.
+              Always interpret results with a healthcare professional.
+            </p>
+          </div>
         </section>
 
         {/* Step 3: Lifestyle */}
@@ -431,6 +477,9 @@ export default function AssessmentForm({ onAssessmentComplete }) {
               </label>
             ))}
           </div>
+          {fieldError('symptoms') && (
+            <p className="text-sm text-red-600 font-medium text-center">{fieldError('symptoms')}</p>
+          )}
           {(form.symptoms || []).length > 0 && (
             <p className="text-xs text-slate-500 text-center italic">
               Selected: {(form.symptoms || [])

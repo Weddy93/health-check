@@ -24,6 +24,10 @@ export function inRange(value, rule) {
 export function validateAssessment(values) {
   const errors = {};
 
+if (!required(values.name)) {
+    errors.name = REQUIRED_TEXT;
+  }
+
   if (!required(values.age)) {
     errors.age = REQUIRED_TEXT;
   } else if (!inRange(values.age, RULES.age)) {
