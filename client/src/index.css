@@ -17,9 +17,66 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Subtle liquid scaling on data entry */
+input,
+select,
+textarea {
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: center;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  transform: scale(1.018);
+}
+button {
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+button:active {
+  transform: scale(0.96);
+}
+
+/* Slow organic liquid gradient mesh background */
+.liquid-mesh {
+  position: fixed;
+  inset: -15%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 25% 35%, rgba(245, 236, 215, 0.55), transparent 45%),
+    radial-gradient(circle at 75% 65%, rgba(174, 198, 178, 0.5), transparent 48%),
+    radial-gradient(circle at 50% 50%, rgba(186, 200, 225, 0.45), transparent 50%),
+    radial-gradient(circle at 15% 75%, rgba(230, 220, 200, 0.4), transparent 42%);
+  filter: blur(46px) saturate(1.05);
+  animation: liquidMesh 15s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes liquidMesh {
+  0% {
+    transform: translate(0%, 0%) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(-1.2%, 0.8%) scale(1.03) rotate(0.8deg);
+  }
+  66% {
+    transform: translate(0.9%, -1%) scale(1.02) rotate(-0.6deg);
+  }
+  100% {
+    transform: translate(-0.6%, 0.5%) scale(1.04) rotate(0.4deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+  .liquid-mesh {
+    animation: none;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -30,17 +87,6 @@ input:focus-visible,
 select:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px #0f6b4c, 0 0 0 4px white;
-}
-
-/* Reduce motion for users who prefer it */
-@media (prefers-reduced-motion: reduce) {
-  .animate-spin {
-    animation: none;
-  }
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
 }
 
 /* Keep legacy App.css from interfering with the redesign */
