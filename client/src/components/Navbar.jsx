@@ -48,12 +48,14 @@ export default function Navbar({ onNavigate, onStartAssessment, active = 'home' 
                 {link.label}
               </button>
             ))}
-            <button
-              onClick={onStartAssessment}
-              className="bg-brand text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-brand-600 hover:shadow-md transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-            >
-              Start Assessment
-            </button>
+            {active !== 'home' && (
+              <button
+                onClick={onStartAssessment}
+                className="bg-brand text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-brand-600 hover:shadow-md transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              >
+                Start Assessment
+              </button>
+            )}
           </div>
 
           {/* Mobile menu toggle */}
@@ -81,12 +83,14 @@ export default function Navbar({ onNavigate, onStartAssessment, active = 'home' 
                 {link.label}
               </button>
             ))}
-            <button
-              onClick={onStartAssessment}
-              className="w-full px-4 py-3 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-600 transition-colors"
-            >
-              Start Assessment
-            </button>
+            {active !== 'home' && (
+              <button
+                onClick={() => { setMenuOpen(false); onStartAssessment(); }}
+                className="w-full px-4 py-3 text-sm font-medium text-white bg-brand rounded-lg hover:bg-brand-600 transition-colors"
+              >
+                Start Assessment
+              </button>
+            )}
           </div>
         )}
       </div>

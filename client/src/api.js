@@ -71,12 +71,18 @@ export async function postMealPlan(assessment) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      nutritional_status_key: assessment.nutritional_status_key,
-      nutritional_status: assessment.nutritional_status,
+      nutritional_status_key:
+        assessment.nutritional_status_key ||
+        assessment.prediction?.nutritional_status_key ||
+        'normal',
+      nutritional_status:
+        assessment.nutritional_status ||
+        assessment.prediction?.nutritional_status ||
+        '',
       bmi: assessment.bmi,
       bmi_category: assessment.bmi_category,
       symptoms: assessment.symptoms || [],
-      diet_type: assessment.diet_type,
+      diet_type: assessment.diet_type || assessment.diet || '',
     }),
   });
 

@@ -81,6 +81,10 @@ export default function AssessmentForm({ onAssessmentComplete }) {
     ? LIFE_STAGE_OPTIONS.filter((o) => o.value === 'none')
     : LIFE_STAGE_OPTIONS;
 
+  const goToStep = (i) => {
+    if (i <= stepIndex) setStepIndex(i);
+  };
+
   const setField = useCallback((key, value) => {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
@@ -285,6 +289,25 @@ export default function AssessmentForm({ onAssessmentComplete }) {
         </p>
       </div>
       <div className="mb-8">
+        <div className="flex flex-wrap gap-2 mb-3">
+          {STEPS.map((s, i) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => goToStep(i)}
+              disabled={i > stepIndex}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                i === stepIndex
+                  ? 'bg-brand text-white'
+                  : i < stepIndex
+                  ? 'bg-brand-50 text-brand hover:bg-brand-100'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+              }`}
+            >
+              {i + 1}. {s.title}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">
           <span>Step {step + 1} of {STEPS.length}</span>
           <span>{currentStep.title}</span>

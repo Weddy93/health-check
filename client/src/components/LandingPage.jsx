@@ -76,12 +76,6 @@ export default function LandingPage({ onStartAssessment, scrollTo }) {
                   {link.label}
                 </button>
               ))}
-              <button
-                onClick={onStartAssessment}
-                className="bg-brand text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-brand-600 hover:shadow-md transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-              >
-                Start Assessment
-              </button>
             </div>
             <button
               className="md:hidden p-2 text-slate-600 hover:text-brand rounded-lg hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
@@ -113,7 +107,7 @@ export default function LandingPage({ onStartAssessment, scrollTo }) {
                   onClick={onStartAssessment}
                   className="bg-brand text-white px-7 py-3.5 rounded-xl font-semibold text-base hover:bg-brand-600 hover:shadow-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
                 >
-                  Start Health Assessment
+                  Start Assessment
                 </button>
                 <button
                   onClick={() => scrollTo('#how-it-works')}
