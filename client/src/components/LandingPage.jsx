@@ -52,42 +52,6 @@ export default function LandingPage({ onStartAssessment, scrollTo }) {
 
   return (
     <div className="min-h-screen flex flex-col text-slate-900">
-      <nav className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center justify-between gap-4 py-3">
-            <button
-              onClick={() => { /* home: already here */ }}
-              className="flex items-center gap-2"
-            >
-              <span className="rounded-xl bg-brand p-1.5">🍏</span>
-              <span className="font-display font-bold text-brand tracking-tight text-lg">NutriCheck</span>
-            </button>
-            <div className="hidden md:flex gap-8 items-center text-sm font-medium">
-              {[
-                { id: 'home', label: 'Home', section: '#home' },
-                { id: 'how-it-works', label: 'How It Works', section: '#how-it-works' },
-                { id: 'about', label: 'About', section: '#about' },
-              ].map((link) => (
-                <button
-                  key={link.id}
-                  onClick={() => scrollTo(link.section)}
-                  className="px-3 py-2 rounded-md text-slate-600 hover:text-brand transition-colors"
-                >
-                  {link.label}
-                </button>
-              ))}
-            </div>
-            <button
-              className="md:hidden p-2 text-slate-600 hover:text-brand rounded-lg hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-              aria-label="Toggle menu"
-            >
-              <span className="block w-5 h-0.5 bg-current mb-1.5"></span>
-              <span className="block w-5 h-0.5 bg-current mb-1.5"></span>
-              <span className="block w-5 h-0.5 bg-current"></span>
-            </button>
-          </div>
-        </div>
-      </nav>
       {/* Hero */}
       <section id="home" className="relative px-4 py-12 sm:py-20 lg:py-24 overflow-hidden">
         <div className="max-w-7xl mx-auto">
