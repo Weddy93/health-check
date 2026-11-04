@@ -71,7 +71,13 @@ export default function RecommendationsPage({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <nav className="mb-8 flex items-center gap-2 text-sm">
+      <div className="print-only mb-6">
+        <h1 className="font-display font-bold text-2xl text-slate-900">NutriCheck — Nutritional Recommendation Plan</h1>
+        <p className="text-sm text-slate-600">
+          Generated {new Date().toLocaleDateString()} · Preliminary screening, not a medical diagnosis.
+        </p>
+      </div>
+      <nav className="mb-8 flex items-center gap-2 text-sm no-print">
         <button
           onClick={onResults}
           className="text-slate-500 hover:text-brand underline underline-offset-4"
@@ -211,7 +217,13 @@ export default function RecommendationsPage({
       </div>
 
       {/* Actions */}
-      <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
+      <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center no-print">
+        <button
+          onClick={() => window.print()}
+          className="flex-1 px-8 py-3.5 rounded-xl bg-brand text-white font-semibold hover:bg-brand-600 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+        >
+          Download as PDF
+        </button>
         <button
           onClick={onRetake}
           className="flex-1 px-8 py-3.5 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"

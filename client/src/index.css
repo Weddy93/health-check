@@ -89,7 +89,40 @@ select:focus-visible {
   box-shadow: 0 0 0 2px #0f6b4c, 0 0 0 4px white;
 }
 
-/* Keep legacy App.css from interfering with the redesign */
+/* Print styles: clean PDF export of the recommendation plan */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .liquid-mesh {
+    display: none !important;
+  }
+  nav {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  #root {
+    background: #ffffff !important;
+  }
+  .max-w-4xl {
+    max-width: 100% !important;
+  }
+  section, div {
+    break-inside: avoid;
+  }
+  a, button {
+    color: #000 !important;
+  }
+}
+/* Hidden on screen; shown only when printing */
+.print-only {
+  display: none;
+}
 #root {
   max-width: none;
   margin: 0;
