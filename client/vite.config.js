@@ -4,10 +4,13 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 // In development the Flask API runs on http://localhost:5000. Proxy /api
 // requests so relative URLs in src/api.js work identically in dev and in
-// production (where Flask serves the SPA itself).
+// production (where Flask serves the SPA itself). `host: true` exposes the
+// dev server to other devices on the LAN (e.g. a mobile phone) so the app
+// can be tested on mobile.
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: true,
     port: 5173,
     proxy: {
       '/api': {

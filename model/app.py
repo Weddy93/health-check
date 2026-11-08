@@ -32,11 +32,7 @@ app = Flask(__name__)
 # Vite dev server runs on 5173; production is served by Flask itself.
 CORS(
     app,
-    origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:5000",
-    ],
+    origins="*",
     supports_credentials=False,
 )
 
@@ -112,6 +108,7 @@ def health_check():
 # API: assess-health  (single authoritative assessment endpoint)
 # --------------------------------------------------------------------------- #
 @app.route("/api/assess-health", methods=["POST"])
+@app.route("/api/assess-health/", methods=["POST"])
 def assess_health():
     """Assess health using the saved ML model.
 
@@ -294,6 +291,7 @@ def _meal_plan_for(status_key: str) -> str:
 
 
 @app.route("/api/generate-meal-plan", methods=["POST"])
+@app.route("/api/generate-meal-plan/", methods=["POST"])
 def generate_meal_plan():
     """Generate meal suggestions aligned with the assessment outcome.
 
