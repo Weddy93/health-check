@@ -74,7 +74,10 @@ export default function LandingPage({ onStartAssessment, scrollTo }) {
                   Start Assessment
                 </button>
                 <button
-                  onClick={() => scrollTo('#how-it-works')}
+                  onClick={() => {
+                    const el = document.getElementById('how-it-works');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
                   className="border border-slate-300 text-slate-700 px-7 py-3.5 rounded-xl font-semibold text-base hover:bg-slate-50 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
                 >
                   Learn More
