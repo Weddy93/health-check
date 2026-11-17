@@ -10,6 +10,8 @@ import RecommendationsPage from './components/RecommendationsPage';
 // Screens: landing (first) -> assessment -> results -> recommendations.
 // The backend Flask API is the single authority for the ML classification;
 // the frontend never classifies health status on its own.
+//main
+
 export default function App() {
   const [page, setPage] = useState('landing');
   const [section, setSection] = useState(null);
