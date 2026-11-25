@@ -56,6 +56,14 @@ if (!required(values.name)) {
     errors.muac = 'MUAC must be between ' + RULES.muac.min + ' and ' + RULES.muac.max + ' cm';
   }
 
+  if (!required(values.activity)) {
+    errors.activity = REQUIRED_TEXT;
+  }
+
+  if (!required(values.diet)) {
+    errors.diet = REQUIRED_TEXT;
+  }
+
   return {
     errors,
     valid: Object.keys(errors).length === 0,

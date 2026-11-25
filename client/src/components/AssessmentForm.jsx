@@ -133,6 +133,8 @@ export default function AssessmentForm({ onAssessmentComplete }) {
       weight: form.weight,
       height: form.height,
       muac: form.muac,
+      activity: form.activity,
+      diet: form.diet,
     });
     const allowed = new Set(STEP_FIELDS[stepIndex] || []);
     Object.keys(all).forEach((key) => {
@@ -153,6 +155,8 @@ export default function AssessmentForm({ onAssessmentComplete }) {
       weight: form.weight,
       height: form.height,
       muac: form.muac,
+      activity: form.activity,
+      diet: form.diet,
     });
     const next = { ...all };
     if ((form.symptoms || []).length === 0) {
