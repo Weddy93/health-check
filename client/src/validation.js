@@ -93,6 +93,7 @@ export const SYMPTOM_OPTIONS = [
   { label: 'Unexplained weight gain', value: 'weight-gain' },
   { label: 'Bone / joint pain', value: 'bones' },
   { label: 'Digestive issues', value: 'digestive' },
+  { label: 'Other (please specify)', value: 'other' },
   { label: 'No symptoms - I currently feel healthy', value: 'no-symptoms' },
 ];
 

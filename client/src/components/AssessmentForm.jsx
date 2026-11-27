@@ -69,6 +69,7 @@ export default function AssessmentForm({ onAssessmentComplete }) {
     activity: '',
     diet: '',
     symptoms: [],
+    otherSymptoms: '',
   });
   const [errors, setErrors] = useState({});
   const [touch, setTouch] = useState({});
@@ -144,6 +145,9 @@ export default function AssessmentForm({ onAssessmentComplete }) {
     if (stepIndex === 3 && (form.symptoms || []).length === 0) {
       next.symptoms = 'Please select at least one symptom or "No symptoms"';
     }
+    if (stepIndex === 3 && (form.symptoms || []).includes('other') && !(form.otherSymptoms || '').trim()) {
+      next.otherSymptoms = 'Please describe your other symptom(s)';
+    }
     return next;
   };
 
@@ -162,6 +166,9 @@ export default function AssessmentForm({ onAssessmentComplete }) {
     if ((form.symptoms || []).length === 0) {
       next.symptoms = 'Please select at least one symptom or "No symptoms"';
     }
+    if ((form.symptoms || []).includes('other') && !(form.otherSymptoms || '').trim()) {
+      next.otherSymptoms = 'Please describe your other symptom(s)';
+    }
     return next;
   };
 
@@ -173,7 +180,7 @@ export default function AssessmentForm({ onAssessmentComplete }) {
   const setTouched = () => {
     setTouch(
       Object.fromEntries(
-        ['name', 'age', 'gender', 'weight', 'height', 'muac', 'activity', 'diet', 'symptoms'].map((k) => [k, true])
+        ['name', 'age', 'gender', 'weight', 'height', 'muac', 'activity', 'diet', 'symptoms', 'otherSymptoms'].map((k) => [k, true])
       )
     );
   };
@@ -204,10 +211,26 @@ export default function AssessmentForm({ onAssessmentComplete }) {
     const height = Number(form.height);
     const bmiEstimate = computeBMI(weight, height);
 
+    // Build the final symptoms list: selected actual symptoms plus any
+    // free-text "other" symptoms entered by the user. "no-symptoms" and
+    // the "other" placeholder itself are not sent as real symptoms.
+    const selectedSymptoms = (form.symptoms || []).filter(
+      (s) => s !== 'no-symptoms' && s !== 'other',
+    );
+    const otherSymptoms = (form.otherSymptoms || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const finalSymptoms =
+      (form.symptoms || []).includes('no-symptoms')
+        ? []
+        : [...selectedSymptoms, ...otherSymptoms];
+
     setLoading(true);
     try {
       const result = await postAssessment({
         ...form,
+        symptoms: finalSymptoms,
         weight: weight,
         height: height,
         muac: Number(form.muac),
@@ -507,10 +530,42 @@ export default function AssessmentForm({ onAssessmentComplete }) {
           {fieldError('symptoms') && (
             <p className="text-sm text-red-600 font-medium text-center">{fieldError('symptoms')}</p>
           )}
+          {(form.symptoms || []).includes('other') && (
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-slate-700">
+                Please describe <span className="text-brand ml-1">*</span>
+              </label>
+              <textarea
+                id="otherSymptoms"
+                value={form.otherSymptoms}
+                onChange={(e) => setField('otherSymptoms', e.target.value)}
+                onBlur={() =>
+                  setTouch((prev) => ({ ...prev, otherSymptoms: true }))
+                }
+                placeholder="e.g. headache, nausea, dizziness"
+                rows={3}
+                className={`w-full p-3 rounded-xl border text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition-all ${
+                  fieldError('otherSymptoms')
+                    ? 'border-red-500 focus-visible:ring-red-500'
+                    : 'border-slate-300 focus-visible:border-brand'
+                }`}
+              />
+              {fieldError('otherSymptoms') && (
+                <p className="text-xs text-red-600 font-medium">
+                  {fieldError('otherSymptoms')}
+                </p>
+              )}
+            </div>
+          )}
           {(form.symptoms || []).length > 0 && (
             <p className="text-xs text-slate-500 text-center italic">
               Selected: {(form.symptoms || [])
-                .map((s) => SYMPTOM_OPTIONS.find((o) => o.value === s)?.label || s)
+                .map((s) => {
+                  if (s === 'other') {
+                    return `Other: ${(form.otherSymptoms || '').trim() || 'other'}`;
+                  }
+                  return SYMPTOM_OPTIONS.find((o) => o.value === s)?.label || s;
+                })
                 .join(', ')}
             </p>
           )}
